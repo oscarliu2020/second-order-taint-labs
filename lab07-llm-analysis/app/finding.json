@@ -1,0 +1,9 @@
+{
+  "kind": "second-order",
+  "source": "req.json[note]",
+  "src_req": "svc_a",
+  "sink": "mysqli_query",
+  "sink_req": "svc_b",
+  "via": "redis:order:42",
+  "value": "' OR 1=1--"
+}

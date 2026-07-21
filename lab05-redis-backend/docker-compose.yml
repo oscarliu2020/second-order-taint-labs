@@ -1,0 +1,20 @@
+# Two independent PHP services + one Redis. They share the data volume (the
+# "database") and the Redis (the taint carrier). Taint set by svc_a is recovered
+# by svc_b — that's cross-service tracking.
+services:
+  redis:
+    image: redis:7-alpine
+  svc_a:
+    build: .
+    image: rasplab-lab5:test
+    environment: [ "REDIS_HOST=redis" ]
+    volumes: [ "shared:/data" ]
+    depends_on: [ redis ]
+  svc_b:
+    build: .
+    image: rasplab-lab5:test
+    environment: [ "REDIS_HOST=redis" ]
+    volumes: [ "shared:/data" ]
+    depends_on: [ redis ]
+volumes:
+  shared:

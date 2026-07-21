@@ -1,0 +1,11 @@
+{"ts": 1, "req": "r1", "event": "SOURCE",  "uuid": "t1", "source": "$_GET[c]", "value": "<script>alert(1)</script>"}
+{"ts": 2, "req": "r1", "event": "EXPORT",  "uuid": "t1", "loc": "/data/note.txt"}
+{"ts": 3, "req": "r2", "event": "RECOVER", "uuid": "t2", "loc": "/data/note.txt"}
+{"ts": 4, "req": "r2", "event": "SINK",    "uuid": "t2", "sink": "echo", "value": "<script>alert(1)</script>"}
+{"ts": 5, "req": "r3", "event": "SOURCE",  "uuid": "t3", "source": "$_GET[q]", "value": "reflected"}
+{"ts": 6, "req": "r3", "event": "SINK",    "uuid": "t3", "sink": "echo", "value": "reflected"}
+{"ts": 7, "req": "svc_a", "event": "SOURCE",  "uuid": "t4", "source": "req.json[note]", "value": "' OR 1=1--"}
+{"ts": 8, "req": "svc_a", "event": "EXPORT",  "uuid": "t4", "loc": "redis:order:42"}
+{"ts": 9, "req": "svc_b", "event": "RECOVER", "uuid": "t5", "loc": "redis:order:42"}
+{"ts": 10, "req": "svc_b", "event": "SINK",   "uuid": "t5", "sink": "mysqli_query", "value": "' OR 1=1--"}
+{"ts": 11, "req": "r7", "event": "EXPORT", "uuid": "t9", "loc": "/tmp/scratch"}

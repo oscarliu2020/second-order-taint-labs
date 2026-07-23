@@ -19,20 +19,33 @@ finding (Lab 6)  ─▶  build prompt  ─▶  LLM  ─▶  { explanation, poc }
 
 ---
 
-## The offline trick
+## Backend: opencode (course default)
 
-`MockLLM` answers using the `KEY: value` facts it finds **in your prompt**. If
-your prompt forgets the sink or the payload, the "model" literally can't mention
-them and the grader fails. So the mock doubles as a prompt-quality check — no API
-key, no flakiness, still meaningful.
+This class uses the **course's unified setup**: `opencode` + the course model
+**`ais3/gemma-4-26b`** + **your own API key** (configured once in opencode).
+No vendor SDK, no key in code — `analyze.py` just shells out to `opencode run`.
 
-To use a real model instead:
+It's the default automatically: whenever the `opencode` CLI is on your PATH,
+`analyze.py` routes through it (using your configured default model). On a box
+without opencode (like the CI Docker image) it falls back to a deterministic
+offline **MockLLM**.
 
 ```bash
-pip install anthropic
-export ANTHROPIC_API_KEY=sk-ant-...
-python3 app/analyze.py app/finding.json      # now hits claude-sonnet-5
+# one-time: configure opencode with YOUR key, and set your DEFAULT model to
+# ais3/gemma-4-26b (its provider prefix is your own opencode config).
+opencode auth login
+
+# then just run — no model flag needed; opencode uses your default:
+python3 app/analyze.py app/finding.json
+
+# overrides if needed:
+#   LLM_BACKEND=mock python3 app/analyze.py app/finding.json          # force mock
+#   OPENCODE_MODEL=<your-provider>/ais3/gemma-4-26b python3 app/analyze.py app/finding.json
 ```
+
+The MockLLM answers using the `KEY: value` facts it finds **in your prompt** — so
+if your prompt omits the sink/payload it can't mention them and the grader fails.
+That makes it a zero-setup prompt-quality check for CI.
 
 ---
 
@@ -56,14 +69,14 @@ Both LLM backends, the mock, and `print_report` are provided.
 ```bash
 cd lab07-llm-analysis
 
-python3 app/analyze.py app/finding.json      # offline mock
-# or
+python3 app/analyze.py app/finding.json      # opencode + ais3/gemma-4-26b (or mock if no opencode)
+# or (always mock — no opencode in the container):
 docker build -t rasplab-lab7 . && docker run --rm rasplab-lab7
 
-./verify.sh
+./verify.sh                                   # grades against the mock (deterministic)
 ```
 
-Expected (mock backend):
+Expected (mock backend, i.e. CI / no opencode):
 
 ```
 === rasplab LLM report (backend: mock) ===
@@ -109,7 +122,7 @@ salvages the block; then `json.loads`.
 - [ ] report explains it as **second-order**
 - [ ] PoC uses the real payload `' OR 1=1--` and names `mysqli_query`
 - [ ] `./verify.sh` prints `✓ PASS`
-- [ ] (optional) it works against a real model with `ANTHROPIC_API_KEY`
+- [ ] with opencode installed, it runs against `ais3/gemma-4-26b` by default
 
 🎉 That's the whole pipeline: **Runtime (C) → Redis → Python correlation → LLM
 report.** You built a second-order detector from an opcode hook up.

@@ -1,128 +1,139 @@
-# Lab 7 — LLM Analysis
+# Lab 7 — LLM Analysis → Exploit (agentic)
 
-> **Mission**: close the loop. Take one correlated chain from Lab 6 and have an
-> LLM explain the bug in plain English and draft a PoC — turning a raw trace into
-> something a human (or a ticket) can act on. Ships with an **offline mock** so it
-> runs with zero API keys; flip on a real model when you want.
+> **Mission**: this is the capstone. The detector already found a second-order
+> chain (Labs 1–6). Now **drive opencode** to read that raw finding, reason out
+> the attack, and produce a **working exploit** that pops a live target — then
+> prove it by exfiltrating a flag.
+>
+> The LLM doesn't decide *whether* it's a bug (the taint engine did). It turns the
+> machine's finding into a **weaponised exploit**.
 
 ```
-finding (Lab 6)  ─▶  build prompt  ─▶  LLM  ─▶  { explanation, poc }  ─▶  report
+trace.jsonl + source ──▶ opencode (you drive it) ──▶ exploit.sh ──▶ FLAG{...}
 ```
 
 ---
 
-## Objectives
+## The setup
 
-1. Turn a structured finding into an effective **prompt** (facts in, JSON out).
-2. Parse a model response robustly and render a report.
-3. Understand the mock/real split — CI stays deterministic, prod uses a real LLM.
-
----
-
-## Backend: opencode (course default)
-
-This class uses the **course's unified setup**: `opencode` + the course model
-**`ais3/gemma-4-26b`** + **your own API key** (configured once in opencode).
-No vendor SDK, no key in code — `analyze.py` just shells out to `opencode run`.
-
-It's the default automatically: whenever the `opencode` CLI is on your PATH,
-`analyze.py` routes through it (using your configured default model). On a box
-without opencode (like the CI Docker image) it falls back to a deterministic
-offline **MockLLM**.
-
-```bash
-# one-time: configure opencode with YOUR key, and set your DEFAULT model to
-# ais3/gemma-4-26b (its provider prefix is your own opencode config).
-opencode auth login
-
-# then just run — no model flag needed; opencode uses your default:
-python3 app/analyze.py app/finding.json
-
-# overrides if needed:
-#   LLM_BACKEND=mock python3 app/analyze.py app/finding.json          # force mock
-#   OPENCODE_MODEL=<your-provider>/ais3/gemma-4-26b python3 app/analyze.py app/finding.json
-```
-
-The MockLLM answers using the `KEY: value` facts it finds **in your prompt** — so
-if your prompt omits the sink/payload it can't mention them and the grader fails.
-That makes it a zero-setup prompt-quality check for CI.
+- **Target** (`docker compose`): a small app with a real **second-order SQL
+  injection**.
+  - `POST /note` — stores your note **safely** (parameterised)  ← request #1
+  - `GET /render?id=N` — pulls the stored note back and **concatenates it into a
+    new SQL query** (`SELECT title FROM articles WHERE tag='<note>'`)  ← request #2
+  - The flag lives only in a `secrets` table. The **only** way out is the SQLi.
+  - A fresh random `FLAG{...}` is generated every run, so you can't fake it.
+- **Raw detector output** you feed the AI: `trace.jsonl` (the taint chain) and the
+  target source `target/app/router.php`.
+- **Your answer**: `exploit.sh` — two curl steps (poison, then trigger).
 
 ---
 
 ## Your job
 
-Edit `app/analyze.py`:
+1. Start the target:
+   ```bash
+   cd lab07-llm-analysis
+   docker compose up --build -d      # target on http://localhost:8090
+   ```
+2. **Open opencode and drive it** — feed it the finding + the source and have it
+   reason out the exploit:
+   ```bash
+   opencode
+   # then, in the session, something like:
+   #   read trace.jsonl and target/app/router.php. This is a second-order SQL
+   #   injection: a note stored via POST /note is later concatenated into
+   #   SELECT title FROM articles WHERE tag='<note>' by GET /render?id=N.
+   #   Write exploit.sh (two curl steps): store a UNION payload that leaks the
+   #   flag from the secrets table, then trigger /render so it comes back.
+   ```
+3. Save what it produces into **`exploit.sh`** (fill the two TODOs). Keep the
+   `TARGET="${TARGET:-http://localhost:8090}"` line and use **`$TARGET`** in every
+   curl — don't hard-code the URL (the grader overrides `TARGET`).
+4. Grade it:
+   ```bash
+   ./verify.sh
+   ```
 
-- **`TODO(lab7-1)`** `build_prompt(finding)` — emit the facts as `KEY: value`
-  lines (`SOURCE`, `SINK`, `VIA`, `PAYLOAD`) and instruct the model to return
-  **strict JSON** with `severity`, `explanation`, `poc`.
-- **`TODO(lab7-2)`** `main()` — `build_prompt` → `llm.generate` → `json.loads` →
-  `print_report`. (Bonus: salvage the largest `{...}` block if a real model wraps
-  JSON in prose.)
+`verify.sh` runs your `exploit.sh` against the live target and **passes iff the
+random flag comes back** — i.e. your exploit actually works.
 
-Both LLM backends, the mock, and `print_report` are provided.
+> **Note:** the grader spins up its **own** isolated target on port **18090**
+> (fresh random flag each run), so you can leave your manual `docker compose up`
+> target on 8090 running for exploit dev — no clash. It also cleans up after
+> itself and fails loudly if the target can't start. This is exactly why your
+> exploit must use `$TARGET` and not a hard-coded `localhost:8090`.
 
 ---
 
-## Run it
-
-```bash
-cd lab07-llm-analysis
-
-python3 app/analyze.py app/finding.json      # opencode + ais3/gemma-4-26b (or mock if no opencode)
-# or (always mock — no opencode in the container):
-docker build -t rasplab-lab7 . && docker run --rm rasplab-lab7
-
-./verify.sh                                   # grades against the mock (deterministic)
-```
-
-Expected (mock backend, i.e. CI / no opencode):
+## What "done" looks like
 
 ```
-=== rasplab LLM report (backend: mock) ===
-severity : high
-chain    : req.json[note] (svc_a) --redis:order:42--> mysqli_query (svc_b)
-
-[explanation]
-Second-order vulnerability. Untrusted input from req.json[note] is persisted at
-redis:order:42 ... flows unsanitized into mysqli_query ...
-
-[poc]
-1) send note=' OR 1=1--  (stored at redis:order:42)
-2) trigger the request that reads redis:order:42 and passes it to mysqli_query
-   => mysqli_query executes the injected payload "' OR 1=1--"
+==> running exploit (.) ...
+----- exploit output -----
+FLAG{ab12...}
+--------------------------
+  ✓ exploit exfiltrated the flag via second-order SQLi
+✓ PASS — Lab 7 owned.
 ```
 
 ---
 
 ## Hints
 
-<details><summary>Hint: prompt shape</summary>
+<details><summary>Hint: the injection shape</summary>
+
+The stored note lands inside `... WHERE tag='<note>'`. Break out with a quote and
+`UNION SELECT` the flag; comment out the trailing quote:
 
 ```
-SOURCE: req.json[note]
-SINK: mysqli_query
-VIA: redis:order:42
-PAYLOAD: ' OR 1=1--
+' UNION SELECT flag FROM secrets-- -
+```
+Store that as the note, then hit `/render?id=<returned id>`.
+</details>
 
-...explain + PoC... Return STRICT JSON with keys "severity","explanation","poc".
+<details><summary>Hint: capturing the id from step 1</summary>
+
+`POST /note` returns `{"id":N}`. Grab it:
+```bash
+id=$(curl -s "$TARGET/note" --data-urlencode "note=<payload>" \
+     | sed -n 's/.*"id":\([0-9]*\).*/\1/p')
 ```
 </details>
 
-<details><summary>Hint: real models are chatty</summary>
+<details><summary>Why is this "second-order"?</summary>
 
-They sometimes wrap JSON in ```json fences or prose. `re.search(r"\{.*\}", raw, re.S)`
-salvages the block; then `json.loads`.
+The payload is stored **safely** in request #1 (parameterised insert). It only
+becomes dangerous in request #2, when a *different* query pulls it out of the DB
+and concatenates it. Single-request analysis of `/render` sees no user input —
+the taint came from storage. That's exactly what Labs 1–6 were built to catch.
 </details>
+
+---
+
+## Why grading is result-based
+
+The LLM's wording is non-deterministic, so we don't grade its prose. We grade the
+**artifact**: does the exploit it helped you write actually exfiltrate the flag?
+The flag is random per run and reachable only through the SQLi, so a passing run
+means a genuinely working second-order exploit — not a lucky string match.
+
+## Security notes (discuss)
+
+- The payload is attacker text flowing into your prompt → **prompt-injection**
+  awareness when you feed untrusted data to an LLM.
+- The exploit is generated code — **read it before running** it anywhere real.
+- Using a **local** model (opencode + `ais3/gemma-4-26b`) keeps the finding and
+  target details off third-party servers.
 
 ---
 
 ## Checklist
 
-- [ ] report explains it as **second-order**
-- [ ] PoC uses the real payload `' OR 1=1--` and names `mysqli_query`
-- [ ] `./verify.sh` prints `✓ PASS`
-- [ ] with opencode installed, it runs against `ais3/gemma-4-26b` by default
+- [ ] `docker compose up` — target answers on `:8090`
+- [ ] you drove opencode from `trace.jsonl` + source to an exploit
+- [ ] `exploit.sh` poisons `/note` then triggers `/render`
+- [ ] `./verify.sh` prints `✓ PASS` (flag exfiltrated)
 
-🎉 That's the whole pipeline: **Runtime (C) → Redis → Python correlation → LLM
-report.** You built a second-order detector from an opcode hook up.
+🎉 Full pipeline: **Runtime (C) → Redis → Python correlation → AI-assisted
+exploitation.** You went from an opcode hook to a working second-order exploit.

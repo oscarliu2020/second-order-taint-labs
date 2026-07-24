@@ -1,0 +1,4 @@
+{"event":"SOURCE","req":"r1","uuid":"t1","endpoint":"POST /note","source":"$_POST[note]","note":"attacker-controlled note body"}
+{"event":"STORE","req":"r1","uuid":"t1","sink":"INSERT INTO notes(body)","loc":"sqlite:notes.body","safe":true}
+{"event":"RECOVER","req":"r2","uuid":"t2","parent":"t1","loc":"sqlite:notes.body","endpoint":"GET /render?id="}
+{"event":"SINK","req":"r2","uuid":"t2","sink":"SELECT title FROM articles WHERE tag='<note>'","detail":"stored note concatenated into SQL — second-order SQLi","safe":false}

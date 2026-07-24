@@ -10,12 +10,13 @@
  * look the location up and re-taint the fresh string. Taint now survives the
  * request boundary because it lives on disk, not in a dead process's heap.
  *
- * You fill two TODO(lab4-*):
- *   (1) EXPORT  in the file_put_contents hook
- *   (2) RECOVER in the file_get_contents hook
+ * You fill three TODO(lab4-*):
+ *   (1) EXPORT decision   in the file_put_contents hook
+ *   (2) RECOVER decision  in the file_get_contents hook
+ *   (3) tl_persist_write(): actually write the record OUT to an external file
  *
  * Provided: taint set, $_GET marking, echo sink, function-hook install, a uuid
- * generator, and the sidecar read/write helpers (the boring file parsing).
+ * generator, and the sidecar READ helper (lookup/parse). You write the file output.
  * ============================================================ */
 
 #include "php.h"
@@ -57,20 +58,31 @@ static void tl_taint_superglobal(const char *name, size_t len, int tv) {
     tl_taint_array(&PG(http_globals)[tv]);
 }
 
-/* ---- data model + sidecar persistence (provided) ----------------------- *
+/* ---- data model + sidecar persistence ---------------------------------- *
  * One JSON object per line: {"loc":"...","uuid":"...","src":"..."}          */
-static void tl_uuid(char *buf, size_t n) {
+static void tl_uuid(char *buf, size_t n) {                 /* provided */
     static unsigned ctr = 0;
     snprintf(buf, n, "%x-%x", (unsigned) getpid(), ctr++);
 }
-/* EXPORT: append a taint record for a storage location. */
+
+/* EXPORT sink: write ONE taint record out to the external sidecar file. */
 static void tl_persist_write(const char *loc, const char *uuid, const char *src) {
-    FILE *f = fopen(TAINT_STORE, "a");
-    if (!f) return;
-    fprintf(f, "{\"loc\":\"%s\",\"uuid\":\"%s\",\"src\":\"%s\"}\n", loc, uuid, src);
-    fclose(f);
+    /* ============================================================
+     * TODO(lab4-3): write the taint record OUT to an external file.
+     * This is the whole point of a "backend" — the taint has to leave this
+     * process and land on disk so a *later* request can read it back.
+     *   - open the sidecar in APPEND mode:  FILE *f = fopen(TAINT_STORE, "a");
+     *     (TAINT_STORE is defined near the top: "/data/.taint.jsonl")
+     *   - bail if fopen failed (f == NULL)
+     *   - write exactly one JSON line for this record, e.g.:
+     *       fprintf(f, "{\"loc\":\"%s\",\"uuid\":\"%s\",\"src\":\"%s\"}\n",
+     *               loc, uuid, src);
+     *   - fclose(f)
+     * Append (not "w") so multiple records accumulate across requests.
+     * ============================================================ */
 }
-/* RECOVER: return 1 if any record exists for this location. */
+
+/* RECOVER: return 1 if any record exists for this location. (provided) */
 static int tl_persist_lookup(const char *loc) {
     FILE *f = fopen(TAINT_STORE, "r");
     if (!f) return 0;

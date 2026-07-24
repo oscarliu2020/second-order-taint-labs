@@ -36,13 +36,16 @@ read("/data/note.txt")             →  if store has it: re-taint the result
 
 ## Your job
 
-- **`TODO(lab4-1)`** — EXPORT in the `file_put_contents` hook: on a tainted write,
-  mint a uuid and `tl_persist_write(loc, uuid, "user_input")`.
-- **`TODO(lab4-2)`** — RECOVER in the `file_get_contents` hook: after the real read,
-  if `tl_persist_lookup(loc)`, `tl_mark(Z_STR_P(return_value))`.
+- **`TODO(lab4-1)`** — EXPORT decision in the `file_put_contents` hook: on a tainted
+  write, mint a uuid and `tl_persist_write(loc, uuid, "user_input")`.
+- **`TODO(lab4-2)`** — RECOVER decision in the `file_get_contents` hook: after the real
+  read, if `tl_persist_lookup(loc)`, `tl_mark(Z_STR_P(return_value))`.
+- **`TODO(lab4-3)`** — the **file output** itself: implement `tl_persist_write()` so it
+  actually writes one record to the external sidecar file (`fopen` in append mode →
+  `fprintf` one JSON line → `fclose`). This is where the taint *leaves the process*.
 
 Provided: taint set, echo sink, both function hooks, `tl_uuid()`, and the sidecar
-read/write (`tl_persist_write` / `tl_persist_lookup`). You own the two decisions.
+READ helper (`tl_persist_lookup`). You write the output side yourself.
 
 ---
 
@@ -64,6 +67,17 @@ curl 'http://localhost:8080/view.php'                              # [RECOVER] +
 ---
 
 ## Hints
+
+<details><summary>Hint: writing the sidecar (TODO lab4-3)</summary>
+
+```c
+FILE *f = fopen(TAINT_STORE, "a");   /* "a" = append, not "w" (don't clobber) */
+if (!f) return;                      /* fopen can fail (perms / missing dir) */
+fprintf(f, "{\"loc\":\"%s\",\"uuid\":\"%s\",\"src\":\"%s\"}\n", loc, uuid, src);
+fclose(f);
+```
+Peek at the file inside the container: `cat /data/.taint.jsonl`.
+</details>
 
 <details><summary>Hint: recover runs AFTER the real read</summary>
 
@@ -92,6 +106,7 @@ is a great bonus exercise.)
 
 ## Checklist
 
+- [ ] `tl_persist_write()` writes records to `/data/.taint.jsonl` (check with `cat`)
 - [ ] `[EXPORT]` on save, `[RECOVER]` on view
 - [ ] cross-request `[ALERT]` on the payload
 - [ ] `./verify.sh` prints `✓ PASS`

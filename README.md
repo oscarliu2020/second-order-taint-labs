@@ -18,7 +18,7 @@ into a full RASP that tracks taint **across requests** and ships traces to Pytho
 | **Lab 4** | File Backend | Persist taint keyed by location, recover on read | Persist Taint |
 | **Lab 5** | Redis Backend | Taint that survives requests **and services** | External Tracking |
 | **Lab 6** | Python Correlation | Reconstruct the provenance graph, catch second-order | Provenance Graph |
-| **Lab 7** | LLM Analysis | Let an LLM explain the trace and cook a PoC | Report |
+| **Lab 7** | LLM Analysis | Drive opencode to weaponise the trace into a working exploit (flag) | AI-assisted exploitation |
 
 All seven shipped — the C labs (1–5) grow one extension (`rasplab`) opcode-hook →
 function-hook → file backend → Redis; the Python labs (6–7) run standalone.

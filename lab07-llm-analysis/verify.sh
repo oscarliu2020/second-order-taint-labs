@@ -1,27 +1,54 @@
 #!/usr/bin/env bash
-# Lab 7 grader: with the offline mock, the report must actually reference the
-# real facts (sink + payload) — which only happens if the prompt carried them.
+# Lab 7 grader: run the exploit against a live vulnerable target and check it
+# exfiltrated the (randomised) flag via the second-order SQLi.
+#
+# The grader spins up its OWN isolated target on a separate host port, so it
+# won't clash with a target you started manually on :8090 for exploit dev.
 # Usage: ./verify.sh [solution]
 set -euo pipefail
 cd "$(dirname "$0")"
-SRC="${1:-app}"; LAB="$(basename "$(pwd)")"
-CODE="app/analyze.py"
-[ "$SRC" = "solution" ] && CODE="../../solutions/$LAB/analyze.py"
-[ -f "$CODE" ] || { echo "no source at $CODE"; exit 1; }
 
-BUILD_CTX=".build_ctx"; rm -rf "$BUILD_CTX"; mkdir -p "$BUILD_CTX/app"
-cp app/finding.json "$BUILD_CTX/app/"; cp "$CODE" "$BUILD_CTX/app/analyze.py"; cp Dockerfile "$BUILD_CTX/"
-cleanup(){ rm -rf "$BUILD_CTX"; }; trap cleanup EXIT
+SRC="${1:-.}"
+EXPLOIT="exploit.sh"
+[ "$SRC" = "solution" ] && EXPLOIT="../../solutions/lab07-llm-analysis/exploit.sh"
+[ -f "$EXPLOIT" ] || { echo "✗ no exploit at $EXPLOIT"; exit 1; }
 
-echo "==> building ($SRC) ..."
-docker build -q -t rasplab-lab7-verify "$BUILD_CTX" >/dev/null
-OUT="$(docker run --rm rasplab-lab7-verify 2>&1 || true)"
-echo "----- output -----"; echo "$OUT"; echo "------------------"
+export LAB7_PORT="${LAB7_PORT:-18090}"          # grader's own host port
+BASE="http://localhost:${LAB7_PORT}"
+PROJ="rasplab_lab7_verify"
+compose() { docker compose -p "$PROJ" -f docker-compose.yml "$@"; }
+cleanup() { compose down -v >/dev/null 2>&1 || true; }
+trap cleanup EXIT
 
-fail=0
-grep -qi 'second-order'      <<<"$OUT" && echo "  ✓ explains it as second-order"      || { echo "  ✗ no second-order explanation"; fail=1; }
-grep -q  'mysqli_query'      <<<"$OUT" && echo "  ✓ prompt carried the SINK"           || { echo "  ✗ sink missing → check build_prompt (TODO lab7-1)"; fail=1; }
-grep -qF "' OR 1=1--"        <<<"$OUT" && echo "  ✓ PoC uses the real payload"         || { echo "  ✗ payload missing from report"; fail=1; }
-grep -qi '\[poc\]'           <<<"$OUT" && echo "  ✓ report includes a PoC section"     || { echo "  ✗ no PoC section → check TODO(lab7-2)"; fail=1; }
+compose down -v >/dev/null 2>&1 || true          # clean slate
+echo "==> building & starting target on :${LAB7_PORT} ..."
+if ! compose up -d --build >/dev/null 2>&1; then
+  echo "✗ target failed to start (port ${LAB7_PORT} busy? set LAB7_PORT=<free port>)"; exit 1
+fi
 
-[ "$fail" -eq 0 ] && echo "✓ PASS — Lab 7 owned. The engine now explains itself." || { echo "✗ FAIL"; exit 1; }
+# wait for the target to answer
+up=0
+for i in $(seq 1 30); do
+  if curl -sf "${BASE}/" >/dev/null 2>&1; then up=1; break; fi
+  sleep 1
+done
+if [ "$up" -ne 1 ]; then
+  echo "✗ target never came up on ${BASE}"; compose logs target 2>&1 | tail -20; exit 1
+fi
+
+flag="$(compose exec -T target cat /flag.txt 2>/dev/null | tr -d '\r\n')"
+[ -n "$flag" ] || { echo "✗ could not read target flag"; exit 1; }
+echo "   target up on ${BASE}; flag hidden in DB (only the SQLi reaches it)"
+
+echo "==> running exploit ($SRC) against ${BASE} ..."
+OUT="$(TARGET="$BASE" bash "$EXPLOIT" 2>&1 || true)"
+echo "----- exploit output -----"; echo "$OUT"; echo "--------------------------"
+
+if grep -qF "$flag" <<<"$OUT"; then
+  echo "  ✓ exploit exfiltrated the flag via second-order SQLi"
+  echo "✓ PASS — Lab 7 owned. You weaponised the trace into a working exploit."
+else
+  echo "  ✗ flag not found in exploit output — the SQLi didn't fire"
+  echo "    (fill exploit.sh via opencode: poison /note, then trigger /render)"
+  echo "✗ FAIL"; exit 1
+fi

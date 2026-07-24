@@ -1,0 +1,6 @@
+services:
+  target:
+    build: ./target
+    # host port is overridable so the grader can use its own (avoids clashing
+    # with a target you started manually on 8090).
+    ports: [ "${LAB7_PORT:-8090}:8090" ]

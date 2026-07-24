@@ -135,6 +135,8 @@ static void tl_file_put_contents(INTERNAL_FUNCTION_PARAMETERS) {
          *       tl_redis_command(4, argv, reply, sizeof(reply));
          *   - (nice to log:) fprintf(stderr, "[EXPORT] %s -> %s\n", key, id);
          * ============================================================ */
+        tl_redis_command(4, (const char *[]){"SETEX", key, TAINT_TTL, id}, reply, sizeof(reply));
+        fprintf(stderr, "[EXPORT] %s -> %s\n", key, id);
 
 
     }
@@ -167,6 +169,11 @@ static void tl_file_get_contents(INTERNAL_FUNCTION_PARAMETERS) {
          *   - (nice to log:) fprintf(stderr, "[RECOVER] %s\n", key);
          * ============================================================ */
 
+        tl_redis_command(2, (const char *[]){"GET", key}, reply, sizeof(reply));
+        if (reply[0] == '$' && strncmp(reply, "$-1", 3) != 0) {
+            tl_mark(Z_STR_P(return_value));
+            fprintf(stderr, "[RECOVER] %s\n", key);
+        }
 
     }
 }

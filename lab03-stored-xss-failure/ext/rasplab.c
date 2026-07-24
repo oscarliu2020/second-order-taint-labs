@@ -80,7 +80,11 @@ static void tl_file_put_contents(INTERNAL_FUNCTION_PARAMETERS) {
      *    that's Lab 4. Right now it just... vanishes across the request.)
      * ============================================================ */
 
-
+    if(z_data&&Z_TYPE_P(z_data)==IS_STRING && tl_is_tainted(Z_STR_P(z_data))) {
+        fprintf(stderr, "[STORE-TAINT] loc=%s data=\"%s\"\n",
+                z_name ? ZSTR_VAL(Z_STR_P(z_name)) : "(null)",
+                ZSTR_VAL(Z_STR_P(z_data)));
+    }
     /* chain to the real file_put_contents */
     orig_fpc(INTERNAL_FUNCTION_PARAM_PASSTHRU);
 }

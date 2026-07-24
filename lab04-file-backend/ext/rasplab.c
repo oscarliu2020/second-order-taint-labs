@@ -80,6 +80,10 @@ static void tl_persist_write(const char *loc, const char *uuid, const char *src)
      *   - fclose(f)
      * Append (not "w") so multiple records accumulate across requests.
      * ============================================================ */
+    FILE *f=fopen(TAINT_STORE,"a");
+    if(f==NULL) return;
+    fprintf(f,"{\"loc\":\"%s\",\"uuid\":\"%s\",\"src\":\"%s\"}\n",loc,uuid,src);
+    fclose(f);
 }
 
 /* RECOVER: return 1 if any record exists for this location. (provided) */
@@ -126,7 +130,12 @@ static void tl_file_put_contents(INTERNAL_FUNCTION_PARAMETERS) {
      *   - (nice to log too:) fprintf(stderr, "[EXPORT] loc=%s uuid=%s\n", loc, id);
      * ============================================================ */
 
-
+        if(z_data&&Z_TYPE_P(z_data)==IS_STRING && tl_is_tainted(Z_STR_P(z_data))) {
+            char id[64];
+            tl_uuid(id,sizeof(id));
+            tl_persist_write(ZSTR_VAL(Z_STR_P(z_name)),id,"user_input");
+            fprintf(stderr, "[EXPORT] loc=%s uuid=%s\n",ZSTR_VAL(Z_STR_P(z_name)),id);
+        }
     orig_fpc(INTERNAL_FUNCTION_PARAM_PASSTHRU);
 }
 
@@ -148,8 +157,10 @@ static void tl_file_get_contents(INTERNAL_FUNCTION_PARAMETERS) {
      *       tl_mark(Z_STR_P(return_value));
      *   - (nice to log:) fprintf(stderr, "[RECOVER] loc=%s\n", loc);
      * ============================================================ */
-
-
+    if(z_name&&Z_TYPE_P(z_name)==IS_STRING && tl_persist_lookup(ZSTR_VAL(Z_STR_P(z_name)))) {
+        if(Z_TYPE_P(return_value)==IS_STRING) tl_mark(Z_STR_P(return_value));
+        fprintf(stderr, "[RECOVER] loc=%s\n",ZSTR_VAL(Z_STR_P(z_name)));
+    }
 }
 
 /* ---- function-hook install (provided) ---------------------------------- */

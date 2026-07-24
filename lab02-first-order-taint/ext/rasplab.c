@@ -66,7 +66,9 @@ static void tl_taint_array(zval *arr) {
          *   - mark       : tl_mark(...)
          *   (bonus: val can be a nested array — strings only is fine for now)
          * ============================================================ */
-
+        if(Z_TYPE_P(val) == IS_STRING) {
+            tl_mark(Z_STR_P(val));
+        }
     } ZEND_HASH_FOREACH_END();
 }
 
@@ -95,7 +97,9 @@ static int tl_echo_handler(zend_execute_data *execute_data) {
      *     content: ZSTR_VAL(Z_STR_P(op1)), line: opline->lineno
      * ============================================================ */
 
-
+    if(op1 && Z_TYPE_P(op1) == IS_STRING && tl_is_tainted(Z_STR_P(op1))) {
+        fprintf(stderr, "[ALERT] tainted -> ECHO: \"%s\" (line=%d)\n", ZSTR_VAL(Z_STR_P(op1)), opline->lineno);
+    }
     return ZEND_USER_OPCODE_DISPATCH;  /* let the real echo run */
 }
 

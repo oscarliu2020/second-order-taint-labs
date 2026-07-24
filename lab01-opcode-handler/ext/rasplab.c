@@ -46,7 +46,7 @@ static int tl_trace_handler(zend_execute_data *execute_data)
      *     [opcode] ZEND_ECHO         line=5
      * ============================================================ */
 
-
+    fprintf(stderr, "[opcode] %-20s line=%d\n", zend_get_opcode_name(opline->opcode), opline->lineno);
     /* Hand control back to the *original* handler. Behaviour stays identical —
      * we only observed. */
     return ZEND_USER_OPCODE_DISPATCH;
@@ -62,8 +62,9 @@ PHP_MINIT_FUNCTION(rasplab)
      *   - API: zend_set_user_opcode_handler(zend_uchar opcode, handler)
      *   - loop over tl_watch[]; length = sizeof(tl_watch)/sizeof(tl_watch[0])
      * ============================================================ */
-
-
+    for(int i=0;i<sizeof(tl_watch)/sizeof(tl_watch[0]);i++){
+        zend_set_user_opcode_handler(tl_watch[i], tl_trace_handler);
+    }
     return SUCCESS;
 }
 

@@ -63,6 +63,13 @@ def main():
     #       join_loc[recover["uuid"]] = recover["loc"]
     #   (This is the edge Lab 3 was missing — the one that makes the chain whole.)
     # ============================================================
+    for recover in recovers:
+        # find matching export with same loc
+        for export in exports:
+            if recover.get("loc") == export.get("loc"):
+                parent[recover["uuid"]] = export["uuid"]
+                join_loc[recover["uuid"]] = recover["loc"]
+                break
 
 
     # provided: walk parent edges back to the root uuid
@@ -95,7 +102,16 @@ def main():
         #       })
         #   (same-request source→sink is first-order; you can skip or tag it.)
         # ============================================================
-        pass
+        if request_of.get(root) != request_of.get(s["uuid"]):
+            findings.append({
+                "kind": "second-order",
+                "source": src["source"],
+                "src_req": request_of.get(root),
+                "sink": s["sink"],
+                "sink_req": request_of.get(s["uuid"]),
+                "via": join_loc.get(s["uuid"], "?"),
+                "value": s.get("value"),
+            })
 
     # provided: report
     so = [f for f in findings if f["kind"] == "second-order"]
